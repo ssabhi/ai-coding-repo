@@ -91,3 +91,16 @@ without breaking clients. Errors use one shape: `{ error: { code, message, detai
 6. Docker (api, web/nginx, mailpit), CI workflow, then the README, DECISIONS, AI_USAGE and
    CLAUDE.md docs.
 7. Independent review pass by a second agent that has not seen my reasoning. Fix findings and record them.
+
+## Corrections (added after the build)
+
+- **Search:** assumption 3 said "contains each word". Testing against the real data showed that
+  substring matching makes `men` return women's clothing, so terms now have to match the **start
+  of a word**.
+- **Enquiry email:** the plan didn't specify a format. It ended up plain text only, which rules out
+  HTML injection, with Reply-To set to the customer.
+- **Enquiry UI:** the form opens inline on the product page, behind a real **Enquire** button, rather
+  than on its own route. That keeps the product in view and matches the criteria's wording.
+- **Logging:** health-check requests are excluded from request logs (found while checking the
+  Docker stack).
+- **nginx:** security headers must stay at server level. See the nginx gotcha in CLAUDE.md.
