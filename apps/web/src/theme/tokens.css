@@ -1,0 +1,44 @@
+/*
+ * Design tokens: the single seam for look and feel. Components reference these
+ * variables and never hard-code colours, fonts or spacing, so the creative
+ * agency's palette and type scale can be dropped in here.
+ */
+:root {
+  --color-background: #f7f5f2;
+  --color-surface: #ffffff;
+  --color-text: #1f1d1a;
+  --color-text-muted: #6b665f;
+  --color-border: #e4dfd8;
+  --color-accent: #1d4ed8;
+  --color-accent-hover: #1e40af;
+  --color-accent-contrast: #ffffff;
+  --color-rating: #b45309;
+  --color-danger: #b91c1c;
+  --color-danger-surface: #fef2f2;
+  --color-success-surface: #f0fdf4;
+  --color-success-border: #86efac;
+  --color-focus: #f59e0b;
+
+  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: Georgia, 'Times New Roman', serif;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.25rem;
+  --font-size-xl: 1.75rem;
+  --font-size-xxl: 2.5rem;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 6%), 0 4px 12px rgb(0 0 0 / 4%);
+  --shadow-card-hover: 0 2px 4px rgb(0 0 0 / 8%), 0 8px 24px rgb(0 0 0 / 8%);
+
+  --content-width: 72rem;
+}

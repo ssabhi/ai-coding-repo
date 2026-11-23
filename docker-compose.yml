@@ -1,0 +1,53 @@
+# One-command local stack: docker compose up --build
+#   Shop:        http://localhost:8080
+#   Sales inbox: http://localhost:8025 (Mailpit catches every email sent)
+
+name: product-catalogue
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      # Wiring for this stack. Fixed here so a local .env can't break it.
+      PORT: 4000
+      TRUST_PROXY_HOPS: 1
+      EMAIL_TRANSPORT: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      # Business settings: override in .env or on the command line.
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:${WEB_PORT:-8080}}
+      PRODUCT_SOURCE: ${PRODUCT_SOURCE:-fakestore}
+      # If Fake Store's Cloudflare protection blocks this network, show the
+      # bundled snapshot rather than an empty shop (logged as a warning).
+      FAKESTORE_FALLBACK: ${FAKESTORE_FALLBACK:-snapshot}
+      TOP_RATED_PRODUCT_IDS: ${TOP_RATED_PRODUCT_IDS:-1,5,11,17,19}
+      CATEGORY_TOP_RATED_LIMIT: ${CATEGORY_TOP_RATED_LIMIT:-3}
+      ENQUIRY_TO_EMAIL: ${ENQUIRY_TO_EMAIL:-sales@example.com}
+      ENQUIRY_FROM_EMAIL: ${ENQUIRY_FROM_EMAIL:-catalogue@example.com}
+    depends_on:
+      - mailpit
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      PRODUCT_IMAGE_ORIGIN: ${PRODUCT_IMAGE_ORIGIN:-https://fakestoreapi.com}
+    ports:
+      - '${WEB_PORT:-8080}:8080'
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    # Bound to localhost only: the inbox holds customers' contact details.
+    ports:
+      - '127.0.0.1:8025:8025' # web UI: the "sales inbox"
+      - '127.0.0.1:1025:1025' # SMTP, so `npm run dev` can send here too
+    restart: unless-stopped
