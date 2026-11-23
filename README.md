@@ -7,7 +7,8 @@ rest of the code.
 
 - **Client:** React 19 + TypeScript (Vite, React Router, TanStack Query)
 - **Backend:** Node.js 24 + TypeScript (Express 5, zod, nodemailer)
-- **Product data:** [Fake Store API](https://fakestoreapi.com), only ever called by the backend
+- **Product data:** [Fake Store API](https://fakestoreapi.com). Only the backend calls its API; the
+  browser loads product images from its CDN (see DECISIONS.md #12)
 
 Further reading: [DECISIONS.md](DECISIONS.md) covers assumptions, trade-offs and next steps.
 [AI_USAGE.md](AI_USAGE.md) covers how AI was used. [docs/PLAN.md](docs/PLAN.md) is the plan written
@@ -28,14 +29,11 @@ docker compose up --build
 
 Stop it with `Ctrl+C`, then run `docker compose down`.
 
-> **If products don't load:** fakestoreapi.com sits behind Cloudflare, which sometimes blocks
-> server-side requests. The API ships with a snapshot of the same 20 products. Use it with:
->
-> ```bash
-> PRODUCT_SOURCE=fixture docker compose up --build
-> ```
->
-> On Windows PowerShell, run `$env:PRODUCT_SOURCE="fixture"; docker compose up --build`.
+> **If Fake Store is unreachable:** fakestoreapi.com sits behind Cloudflare, which sometimes blocks
+> server-side requests. In Docker, the API then serves a bundled snapshot of the same 20 products
+> and logs a warning (`docker compose logs api`), so the shop still works. To use only the
+> snapshot, run `PRODUCT_SOURCE=fixture docker compose up --build`. On Windows PowerShell, run
+> `$env:PRODUCT_SOURCE="fixture"; docker compose up --build`.
 
 If port 8080 is taken, run `WEB_PORT=8081 docker compose up --build`.
 
@@ -76,13 +74,14 @@ inbox, run `docker compose up mailpit`, copy `.env.example` to `.env` and set
 ## Tests and checks
 
 ```bash
-npm test             # 79 tests: API (unit and HTTP contract) and web (one per acceptance criterion)
+npm test             # 88 tests: API (unit and HTTP contract) and web (one per acceptance criterion)
 npm run check        # what CI runs: format, lint, typecheck, test
 ```
 
 - **API tests** (`apps/api/test`): pure rules (top-rated selection, search), the Fake Store adapter
-  (mapping, caching, stale-on-error, timeouts against a real local HTTP server), the enquiry use
-  case, config validation, and a supertest suite grouped by acceptance criterion.
+  (mapping, caching, stale-on-error, back-off, snapshot fallback, and timeouts against a real local
+  HTTP server), the enquiry use case, config validation, and a supertest suite grouped by
+  acceptance criterion, including rate limiting behind a proxy.
 - **Web tests** (`apps/web/test`): render the real routes and data layer with only `fetch` stubbed,
   then click through each acceptance criterion as a user would.
 
@@ -91,14 +90,16 @@ npm run check        # what CI runs: format, lint, typecheck, test
 Every setting has a working default. [.env.example](.env.example) documents them all. The ones
 you are most likely to change:
 
-| Variable                                                          | Default                      | Purpose                                                 |
-| ----------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------- |
-| `PRODUCT_SOURCE`                                                  | `fakestore`                  | `fakestore` (live) or `fixture` (bundled snapshot)      |
-| `TOP_RATED_PRODUCT_IDS`                                           | `1,5,11,17,19`               | The owner's "top rated" picks, in display order         |
-| `CATEGORY_TOP_RATED_LIMIT`                                        | `3`                          | Top rated products at the head of each category page    |
-| `EMAIL_TRANSPORT`                                                 | `console` (`smtp` in Docker) | `smtp` sends through `SMTP_*`; `console` logs the email |
-| `ENQUIRY_TO_EMAIL`                                                | `sales@example.com`          | The sales inbox                                         |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE` | Mailpit                      | Any SMTP provider (SES, SendGrid, Postmark)             |
+| Variable                                                          | Default                       | Purpose                                                   |
+| ----------------------------------------------------------------- | ----------------------------- | --------------------------------------------------------- |
+| `PRODUCT_SOURCE`                                                  | `fakestore`                   | `fakestore` (live) or `fixture` (bundled snapshot)        |
+| `FAKESTORE_FALLBACK`                                              | `none` (`snapshot` in Docker) | Serve the snapshot if Fake Store has never been reachable |
+| `PRODUCT_IMAGE_ORIGIN` (web)                                      | `https://fakestoreapi.com`    | The one image host the CSP allows                         |
+| `TOP_RATED_PRODUCT_IDS`                                           | `1,5,11,17,19`                | The owner's "top rated" picks, in display order           |
+| `CATEGORY_TOP_RATED_LIMIT`                                        | `3`                           | Top rated products at the head of each category page      |
+| `EMAIL_TRANSPORT`                                                 | `console` (`smtp` in Docker)  | `smtp` sends through `SMTP_*`; `console` logs the email   |
+| `ENQUIRY_TO_EMAIL`                                                | `sales@example.com`           | The sales inbox                                           |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE` | Mailpit                       | Any SMTP provider (SES, SendGrid, Postmark)               |
 
 Invalid configuration stops the API at startup with a message that names each bad variable.
 
@@ -124,15 +125,15 @@ docker-compose.yml        api + web (nginx) + mailpit
 
 ## API
 
-| Method | Path                      | Returns                                                                              |
-| ------ | ------------------------- | ------------------------------------------------------------------------------------ |
-| GET    | `/api/products/top-rated` | `{ products }`: the home page's 5                                                    |
-| GET    | `/api/categories`         | `{ categories }`                                                                     |
-| GET    | `/api/categories/:slug`   | `{ category, topRated, more }`                                                       |
-| GET    | `/api/products?q=term`    | `{ products }`: matches for `term`, or everything if `q` is absent                   |
-| GET    | `/api/products/:id`       | `{ product }`                                                                        |
-| POST   | `/api/enquiries`          | `201 { reference }`. Body: `productId`, `name`, `email`, optional `phone`, `message` |
-| GET    | `/api/health`             | `{ status: "ok" }`                                                                   |
+| Method | Path                      | Returns                                                                                                  |
+| ------ | ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/products/top-rated` | `{ products }`: the home page's 5                                                                        |
+| GET    | `/api/categories`         | `{ categories }`                                                                                         |
+| GET    | `/api/categories/:slug`   | `{ category, topRated, more }`                                                                           |
+| GET    | `/api/products?q=term`    | `{ products }`: matches for `term` (none if it has no letters or digits), or everything if `q` is absent |
+| GET    | `/api/products/:id`       | `{ product }`                                                                                            |
+| POST   | `/api/enquiries`          | `201 { reference }`. Body: `productId`, `name`, `email`, optional `phone`, `message`                     |
+| GET    | `/api/health`             | `{ status: "ok" }`                                                                                       |
 
 Every error has the same shape: `{ error: { code, message, details? } }`. The codes are
 `VALIDATION_FAILED` (400, with per-field `details`), `NOT_FOUND` (404), `RATE_LIMITED` (429),

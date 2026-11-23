@@ -58,24 +58,62 @@ the assumptions to record, the risks found while planning, and the order of work
 | **Noisy logs.** Docker's health check hit `/api/health` every 10s and every hit was logged.                                                                                                                                     | Reading the container logs while verifying the stack.                                             | pino-http ignores the health route.                                                                                                               |
 | **A stale path in `.prettierignore`** pointed at a file that didn't exist.                                                                                                                                                      | Prettier reformatted the snapshot it was meant to skip.                                           | The entry was removed; formatted JSON diffs better anyway.                                                                                        |
 
-Findings from the independent review agent, and what was done about each, are listed below.
-
 ### Independent review
 
-_Pending: added once the review completes._
+A second agent was given the brief and the code, but not my reasoning, and was asked to be
+skeptical. It made no changes. I reproduced each finding before acting on it. The fixes are in a
+separate commit, after the build commits.
+
+| #   | Finding                                                                                                                                                                                                                                                                                                            | Verdict                                                                                                                               | What was done                                                                                                                                                                                                                          |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **The web tests failed (13 of 18) on Windows when the working directory's drive letter was lowercase** (`c:\`, as a VS Code terminal gives you). jest-dom loaded a second copy of vitest and registered its matchers on the wrong `expect`. My runs never showed it, because Git Bash normalises the drive letter. | **Real, and the most valuable catch.** A Windows reviewer would have seen failing tests. Reproduced from `cmd` with a lowercase `cd`. | jest-dom is inlined in `vite.config.ts`. 18/18 pass from both `c:\` and `C:\`.                                                                                                                                                         |
+| 2   | **A search with no letters or digits (`!!!`, `-`, blank) returned the whole catalogue**, because `[].every()` is `true`. My test "does not match on punctuation alone" actually tested `zzz`, so it hid the bug.                                                                                                   | Real: an acceptance-criterion bug hidden by a misnamed test.                                                                          | Such a search now matches nothing. The misleading test was renamed, and tests were added at unit and HTTP level.                                                                                                                       |
+| 3   | **After the cache expired, a failed refresh was retried on every request**, so each page waited for the 5s timeout.                                                                                                                                                                                                | Real.                                                                                                                                 | The adapter backs off for 30s after a failure while serving the cached copy. Tested with a fake clock.                                                                                                                                 |
+| 4   | **The default Docker run depended on Cloudflare letting the reviewer's network through.**                                                                                                                                                                                                                          | Agreed in part. A silent fallback in production would still hide outages.                                                             | Added `FAKESTORE_FALLBACK=snapshot`, which serves the snapshot with a warning only if Fake Store has _never_ been reachable. It is off by default in the API and on in `docker-compose.yml`. Verified against an unreachable upstream. |
+| 5   | **The README said Fake Store is "only ever called by the backend", but the browser loads its images.** The CSP image host was hard-coded, so DECISIONS.md's claim that this is "a backend change only" was wrong.                                                                                                  | Real. The wording overclaimed.                                                                                                        | The README and DECISIONS.md were corrected. The CSP image origin is now config (`PRODUCT_IMAGE_ORIGIN`), rendered by the nginx image's template step.                                                                                  |
+| 6   | **`WEB_PORT=8081` still produced `:8080` links in emails.**                                                                                                                                                                                                                                                        | Real.                                                                                                                                 | `PUBLIC_WEB_URL` now defaults to the `WEB_PORT` value; checked with `docker compose config`.                                                                                                                                           |
+| 7   | **Mailpit's inbox (customer PII) was published on all network interfaces.**                                                                                                                                                                                                                                        | Real.                                                                                                                                 | It is bound to `127.0.0.1`.                                                                                                                                                                                                            |
+| 8   | **A mistyped top rated id was silently replaced.**                                                                                                                                                                                                                                                                 | Real.                                                                                                                                 | The API logs the missing picks at startup. I kept "any number of picks" rather than exactly 5: extra picks can feature products on category pages.                                                                                     |
+| 9   | **Test gaps:** the "don't retry 4xx" rule was never exercised; rate limiting behind nginx was untested; the Docker build type-checked test files.                                                                                                                                                                  | Real.                                                                                                                                 | Added a retry-policy test and an `X-Forwarded-For` spoofing test (one trusted hop). The production build now type-checks `src` only.                                                                                                   |
+
+The reviewer also listed what it checked and found sound: proxy trust, email header injection,
+error leakage, CORS and CSRF, CSP, the build output and the image tags. That's useful, because it
+says where _not_ to spend more time.
+
+One more mistake, made while writing this section: a shell one-liner used to edit this file let
+bash expand the Markdown backticks as commands. The commands it ran were harmless (they only
+printed errors and help text), but the section was garbled. I spotted it on reading the file back
+and rewrote the section using the editor tool.
 
 ## Human review and ownership
 
-The brief says the submitter owns every line. To be completed by the author before submission:
-what you reviewed, anything you changed or pushed back on, and the time it took.
+All code changes were made through Claude Code. My part was to direct the scope, the process and
+the decisions that were mine to make:
+
+- **Brief and constraints.** I gave the agent the challenge PDF and the recruiter's instructions,
+  plus one constraint of my own: make it a git repository and commit, but don't push or set a
+  remote. I create and push the GitHub repository myself.
+- **Commit history.** I asked for meaningful commits for each major piece of code instead of one
+  large commit. The history is structured around that.
+- **Git identity.** I chose the author identity for the commits: my personal address, because
+  the repository will be public.
+- **Commit permission stayed with me.** My Claude Code permission settings blocked the agent's
+  `git commit` calls throughout. Rather than loosen that, the agent prepared a script that
+  creates the history for me to run (`.git/commit-history/make-commits.sh`).
+- **This section.** I asked Claude to write it from the session record, so it lists only what
+  actually happened in the session.
+
+The independent review above is the review of the AI's output that happened in this session.
 
 ## Time spent
 
-| Phase                | Time                            | Notes                                                                         |
-| -------------------- | ------------------------------- | ----------------------------------------------------------------------------- |
-| Planning             | ~10 min                         | Read the brief, probed the toolchain and Fake Store, wrote the plan           |
-| Building             | ~30 min                         | API, web, Docker, CI                                                          |
-| Testing              | ~10 min                         | 79 automated tests, mutation checks, Docker stack and headless-browser checks |
-| Reviewing and docs   | ~15 min                         | Independent review agent, fixes, README, DECISIONS, this file                 |
-| **AI session total** | **~65 min**                     | Measured from session timestamps                                              |
-| Author review        | _to be completed by the author_ |                                                                               |
+Everything happened in one session, from 11:06 to about 12:10 UTC on 23 Nov 2026. I directed
+the session while the agent worked. The phases overlapped, so the split below is approximate.
+
+| Phase                  | Time        | Notes                                                                                                |
+| ---------------------- | ----------- | ---------------------------------------------------------------------------------------------------- |
+| Planning               | ~10 min     | Read the brief, probed the toolchain and Fake Store, wrote the plan                                  |
+| Building               | ~25 min     | API, web, Docker, CI                                                                                 |
+| Testing                | ~10 min     | Automated tests, mutation checks, Docker stack and headless-browser checks                           |
+| Review, fixes and docs | ~20 min     | Independent review (about 12 min, running alongside the docs), 9 fixes, README, DECISIONS, this file |
+| **Total**              | **~65 min** | Wall clock, from session timestamps. This is under the 2–3 hour time-box.                            |

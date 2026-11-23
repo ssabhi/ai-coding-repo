@@ -66,4 +66,9 @@ Run `npm run check` before you say a change is done.
   `node:https` on purpose. Don't "simplify" it back to `fetch`.
 - In nginx, `add_header` in a `location` block discards the server-level security headers. Set
   caching with `expires` instead.
+- `FAKESTORE_FALLBACK=snapshot` (on in docker-compose.yml, off by default) serves the snapshot
+  only if Fake Store has never been reachable. Keep it off by default: silent stale data hides
+  outages.
+- jest-dom is inlined in `apps/web/vite.config.ts` (`server.deps.inline`). Without it the web
+  tests fail on Windows when the working directory's drive letter is lowercase (`c:` not `C:`).
 - `PRODUCT_SOURCE=fixture` serves the bundled snapshot, for offline work or if Fake Store is down.

@@ -104,3 +104,7 @@ without breaking clients. Errors use one shape: `{ error: { code, message, detai
 - **Logging:** health-check requests are excluded from request logs (found while checking the
   Docker stack).
 - **nginx:** security headers must stay at server level. See the nginx gotcha in CLAUDE.md.
+- **Fallback:** the plan said no silent fallback to the snapshot. After the independent review,
+  it became an opt-in setting, `FAKESTORE_FALLBACK=snapshot`, enabled only in
+  docker-compose.yml so a reviewer's first run can't be blocked by Cloudflare. The API default
+  still treats an outage as an error.

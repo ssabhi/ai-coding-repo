@@ -19,11 +19,11 @@ behind a seam:
 
 ```bash
 docker compose up --build     # shop at http://localhost:8080, sales inbox at http://localhost:8025
-npm install && npm run check  # format, lint, typecheck and 79 tests
+npm install && npm run check  # format, lint, typecheck and 88 tests
 ```
 
-If products don't load, Fake Store's Cloudflare protection may be blocking your network. Run
-`PRODUCT_SOURCE=fixture docker compose up --build` instead.
+If Fake Store's Cloudflare protection blocks your network, the Docker stack serves a bundled
+snapshot of the same products and logs a warning, so the shop still works.
 
 Suggested reading order: `apps/api/src/composition.ts` (how everything is wired), then
 `catalogue/CatalogueService.ts` and `topRated.ts`, `enquiries/EnquiryService.ts`, and
@@ -48,8 +48,9 @@ Full list in [DECISIONS.md](../DECISIONS.md).
 - **Search matches the start of words**, so `men` doesn't return women's clothing.
 - **No "Thank you" if the email fails.** The customer sees an error and keeps their input. A
   durable queue is the next step.
-- **No silent fallback to the snapshot.** Cloudflare blocks Node's `fetch`, so the adapter uses
-  `node:https`, and the snapshot is an explicit switch so outages stay visible.
+- **The snapshot fallback is opt-in.** Cloudflare blocks Node's `fetch`, so the adapter uses
+  `node:https`. Serving the snapshot when Fake Store is unreachable is off by default in the API,
+  so outages stay visible. It is on in `docker-compose.yml`, so the demo always runs.
 - **Product images load from Fake Store's CDN.** Image URLs come from our API, and the browser
   never calls Fake Store's API.
 
@@ -71,6 +72,7 @@ DECISIONS.md under "What I would do next".
 
 ## AI usage
 
-Built with Claude Code (Claude Opus 5.5) under my direction, with an independent review by a
-second agent. Details of what it got wrong and how each issue was caught are in
+Built with Claude Code (Claude Opus 5.5) under my direction. An independent review by a second
+agent found 9 issues, all fixed in the last commit. One of them: the web tests failed on Windows
+when the drive letter was lowercase. Details of what it got wrong and how each issue was caught are in
 [AI_USAGE.md](../AI_USAGE.md).
