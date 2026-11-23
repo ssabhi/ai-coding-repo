@@ -21,6 +21,8 @@ const envSchema = z.object({
   PRODUCT_SOURCE: z.enum(['fakestore', 'fixture']).default('fakestore'),
   FAKESTORE_BASE_URL: baseUrl.default('https://fakestoreapi.com'),
   FAKESTORE_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  /** snapshot = serve the bundled catalogue if Fake Store has never been reachable. */
+  FAKESTORE_FALLBACK: z.enum(['none', 'snapshot']).default('none'),
   CATALOGUE_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).default(300),
   CATALOGUE_CURRENCY: z
     .string()
@@ -50,7 +52,7 @@ export interface AppConfig {
   trustProxyHops: number;
   catalogue: {
     source: 'fakestore' | 'fixture';
-    fakeStore: { baseUrl: string; timeoutMs: number };
+    fakeStore: { baseUrl: string; timeoutMs: number; fallback: 'none' | 'snapshot' };
     cacheTtlMs: number;
     currency: string;
     topRatedIds: string[];
@@ -85,7 +87,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trustProxyHops: e.TRUST_PROXY_HOPS,
     catalogue: {
       source: e.PRODUCT_SOURCE,
-      fakeStore: { baseUrl: e.FAKESTORE_BASE_URL, timeoutMs: e.FAKESTORE_TIMEOUT_MS },
+      fakeStore: {
+        baseUrl: e.FAKESTORE_BASE_URL,
+        timeoutMs: e.FAKESTORE_TIMEOUT_MS,
+        fallback: e.FAKESTORE_FALLBACK,
+      },
       cacheTtlMs: e.CATALOGUE_CACHE_TTL_SECONDS * 1000,
       currency: e.CATALOGUE_CURRENCY,
       topRatedIds: e.TOP_RATED_PRODUCT_IDS,

@@ -8,9 +8,10 @@ server {
   # add_header directives in any location that declares its own, so locations
   # below set caching with `expires` instead of add_header.
   #
-  # Product images are hosted by the product source (Fake Store's CDN), so
-  # that is the only third-party origin allowed.
-  add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https://fakestoreapi.com; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+  # Product images are hosted by the product source (Fake Store's CDN today),
+  # so that is the only third-party origin allowed. It comes from the
+  # environment (PRODUCT_IMAGE_ORIGIN) via the nginx image's template step.
+  add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: ${PRODUCT_IMAGE_ORIGIN}; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
   add_header X-Content-Type-Options "nosniff" always;
   add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 

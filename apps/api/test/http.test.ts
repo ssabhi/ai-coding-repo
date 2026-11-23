@@ -14,10 +14,11 @@ interface SetupOptions {
   products?: ProductRepository;
   email?: EmailSender;
   enquiryLimit?: number;
+  trustProxyHops?: number;
 }
 
 /** The real app wired to the bundled snapshot and an email sender that records messages. */
-function setup({ products, email, enquiryLimit = 100 }: SetupOptions = {}) {
+function setup({ products, email, enquiryLimit = 100, trustProxyHops = 0 }: SetupOptions = {}) {
   const repository = products ?? new InMemoryProductRepository(loadSnapshotProducts('GBP'));
   const sentEmails: EmailMessage[] = [];
 
@@ -39,7 +40,7 @@ function setup({ products, email, enquiryLimit = 100 }: SetupOptions = {}) {
       newReference: () => 'ENQ-TEST',
     }),
     logger: pino({ level: 'silent' }),
-    trustProxyHops: 0,
+    trustProxyHops,
     enquiryRateLimit: { windowMs: 60_000, limit: enquiryLimit },
   });
 
@@ -113,6 +114,13 @@ describe('Search: GET /api/products?q=', () => {
         (p: { category: { slug: string } }) => p.category.slug !== 'womens-clothing',
       ),
     ).toBe(true);
+  });
+
+  it('returns nothing for a term with no letters or digits, rather than everything', async () => {
+    for (const q of ['!!!', ' ', '']) {
+      const res = await request(setup().app).get('/api/products').query({ q }).expect(200);
+      expect(res.body.products).toEqual([]);
+    }
   });
 
   it('returns an empty list when nothing matches', async () => {
@@ -238,6 +246,18 @@ describe('Enquiry: POST /api/enquiries', () => {
     const res = await request(app).post('/api/enquiries').send(validEnquiry).expect(429);
 
     expect(res.body.error.code).toBe('RATE_LIMITED');
+  });
+
+  it('behind nginx, limits each real client separately and ignores spoofed addresses', async () => {
+    // nginx appends the address it saw to X-Forwarded-For; with one trusted
+    // hop the API uses that right-most entry and ignores anything the client sent.
+    const { app } = setup({ enquiryLimit: 1, trustProxyHops: 1 });
+    const from = (forwardedFor: string) =>
+      request(app).post('/api/enquiries').set('X-Forwarded-For', forwardedFor).send(validEnquiry);
+
+    await from('203.0.113.1').expect(201);
+    await from('203.0.113.2').expect(201);
+    await from('198.51.100.99, 203.0.113.1').expect(429);
   });
 });
 

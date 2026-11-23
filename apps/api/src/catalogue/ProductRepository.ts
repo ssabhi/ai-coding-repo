@@ -2,6 +2,7 @@ import type { Category, Product } from './product.js';
 
 export interface ProductQuery {
   categorySlug?: string;
+  /** Omit to skip searching. A blank search matches nothing. */
   search?: string;
 }
 

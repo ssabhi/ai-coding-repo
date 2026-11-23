@@ -42,7 +42,13 @@ describe('matchesSearch', () => {
     expect(matchesSearch(dress, 'cafe')).toBe(true);
   });
 
-  it('does not match on punctuation alone', () => {
+  it('does not match unrelated words', () => {
     expect(matchesSearch(jacket, 'zzz')).toBe(false);
+  });
+
+  it('matches nothing when the search has no letters or digits', () => {
+    for (const search of ['', '   ', '!!!', ' - ', "'"]) {
+      expect(matchesSearch(jacket, search)).toBe(false);
+    }
   });
 });

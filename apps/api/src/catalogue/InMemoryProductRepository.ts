@@ -19,7 +19,7 @@ export class InMemoryProductRepository implements ProductRepository {
     return this.products.filter(
       (product) =>
         (!categorySlug || product.category.slug === categorySlug) &&
-        (!search || matchesSearch(product, search)),
+        (search === undefined || matchesSearch(product, search)),
     );
   }
 

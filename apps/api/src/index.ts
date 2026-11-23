@@ -25,14 +25,22 @@ const server = app.listen(config.port, () => {
   );
 });
 
-// Warm the catalogue cache and surface data-source problems at startup, not on
-// the first customer request.
-deps.catalogue.listCategories().catch((error: unknown) => {
-  logger.warn(
-    { err: error },
-    'Could not load the catalogue. If Fake Store is blocking requests, set PRODUCT_SOURCE=fixture.',
-  );
-});
+// Warm the catalogue cache and surface problems at startup, not on the first
+// customer request: an unreachable data source, or top rated picks that don't
+// exist (they would silently be replaced by the best customer-rated products).
+deps.catalogue
+  .missingTopRatedIds()
+  .then((missing) => {
+    if (missing.length > 0) {
+      logger.warn({ missing }, 'Some TOP_RATED_PRODUCT_IDS are not in the catalogue');
+    }
+  })
+  .catch((error: unknown) => {
+    logger.warn(
+      { err: error },
+      'Could not load the catalogue. If Fake Store is blocking requests, set PRODUCT_SOURCE=fixture.',
+    );
+  });
 
 function shutdown(signal: string) {
   logger.info({ signal }, 'Shutting down');

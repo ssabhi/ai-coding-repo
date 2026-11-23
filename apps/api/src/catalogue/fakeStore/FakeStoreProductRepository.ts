@@ -14,10 +14,23 @@ export interface FakeStoreOptions {
   timeoutMs: number;
   cacheTtlMs: number;
   currency: string;
+  /** After a failed fetch, wait this long before trying Fake Store again. */
+  retryAfterFailureMs?: number;
+  /**
+   * Served when Fake Store has never been reachable, e.g. the bundled
+   * snapshot. Off by default so an outage is an error, not silently old data.
+   */
+  fallbackCatalogue?: readonly Product[];
   logger?: Pick<Logger, 'warn'>;
   /** Injectable for tests. */
   httpGet?: HttpGetJson;
   now?: () => number;
+}
+
+interface CachedCatalogue {
+  catalogue: InMemoryProductRepository;
+  expiresAt: number;
+  source: 'fakestore' | 'fallback';
 }
 
 /**
@@ -26,10 +39,11 @@ export interface FakeStoreOptions {
  * Fake Store has 20 products and no search, so the adapter fetches the whole
  * catalogue once, caches it for `cacheTtlMs`, and answers queries in memory.
  * If a refresh fails it keeps serving the last good copy, because a slightly
- * stale catalogue is better than an error page.
+ * stale catalogue is better than an error page, and it backs off so a slow
+ * upstream doesn't make every request wait for a timeout.
  */
 export class FakeStoreProductRepository implements ProductRepository {
-  private cached?: { catalogue: InMemoryProductRepository; expiresAt: number };
+  private cached?: CachedCatalogue;
   private inFlight?: Promise<InMemoryProductRepository>;
   private readonly httpGet: HttpGetJson;
   private readonly now: () => number;
@@ -37,6 +51,14 @@ export class FakeStoreProductRepository implements ProductRepository {
   constructor(private readonly options: FakeStoreOptions) {
     this.httpGet = options.httpGet ?? httpGetJson;
     this.now = options.now ?? Date.now;
+    if (options.fallbackCatalogue) {
+      // Already expired, so Fake Store is still tried first.
+      this.cached = {
+        catalogue: new InMemoryProductRepository(options.fallbackCatalogue),
+        expiresAt: 0,
+        source: 'fallback',
+      };
+    }
   }
 
   async list(query?: ProductQuery): Promise<Product[]> {
@@ -63,9 +85,10 @@ export class FakeStoreProductRepository implements ProductRepository {
       return await this.inFlight;
     } catch (error) {
       if (!this.cached) throw error;
+      this.cached.expiresAt = this.now() + (this.options.retryAfterFailureMs ?? 30_000);
       this.options.logger?.warn(
-        { err: error },
-        'Fake Store refresh failed; serving cached catalogue',
+        { err: error, servedFrom: this.cached.source },
+        'Fake Store is unavailable; serving the previous catalogue',
       );
       return this.cached.catalogue;
     }
@@ -92,7 +115,11 @@ export class FakeStoreProductRepository implements ProductRepository {
     const catalogue = new InMemoryProductRepository(
       parsed.data.map((raw) => toProduct(raw, this.options.currency)),
     );
-    this.cached = { catalogue, expiresAt: this.now() + this.options.cacheTtlMs };
+    this.cached = {
+      catalogue,
+      expiresAt: this.now() + this.options.cacheTtlMs,
+      source: 'fakestore',
+    };
     return catalogue;
   }
 }

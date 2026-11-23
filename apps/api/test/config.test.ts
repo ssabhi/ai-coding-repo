@@ -7,6 +7,8 @@ describe('loadConfig', () => {
 
     expect(config.port).toBe(4000);
     expect(config.catalogue.source).toBe('fakestore');
+    // No silent fallback unless asked for: an outage should be visible.
+    expect(config.catalogue.fakeStore.fallback).toBe('none');
     expect(config.catalogue.topRatedIds).toEqual(['1', '5', '11', '17', '19']);
     expect(config.email.transport).toBe('console');
   });

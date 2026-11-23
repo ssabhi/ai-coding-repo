@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FakeStoreProductRepository } from '../src/catalogue/fakeStore/FakeStoreProductRepository.js';
+import {
+  FakeStoreProductRepository,
+  type FakeStoreOptions,
+} from '../src/catalogue/fakeStore/FakeStoreProductRepository.js';
 import type { HttpGetJson } from '../src/catalogue/fakeStore/httpGetJson.js';
 import { UpstreamError } from '../src/errors.js';
+import { aProduct } from './builders.js';
 
 const backpack = {
   id: 1,
@@ -22,7 +26,7 @@ const ring = {
   rating: { rate: 4.6, count: 400 },
 };
 
-function setup(responses: Array<unknown | Error>) {
+function setup(responses: Array<unknown | Error>, options: Partial<FakeStoreOptions> = {}) {
   let now = 0;
   const httpGet = vi.fn<HttpGetJson>(async () => {
     const next = responses.length > 1 ? responses.shift() : responses[0];
@@ -38,6 +42,7 @@ function setup(responses: Array<unknown | Error>) {
     httpGet,
     logger,
     now: () => now,
+    ...options,
   });
   const advanceClock = (ms: number) => {
     now += ms;
@@ -119,5 +124,41 @@ describe('FakeStoreProductRepository', () => {
 
     expect((await repository.list()).map((p) => p.id)).toEqual(['1']);
     expect(logger.warn).toHaveBeenCalledOnce();
+  });
+
+  it('waits before retrying a failed upstream, so a slow API does not slow every request', async () => {
+    const { repository, httpGet, advanceClock } = setup([
+      [backpack],
+      new Error('timed out after 5000ms'),
+      [backpack, ring],
+    ]);
+
+    await repository.list();
+    advanceClock(60_000);
+    await repository.list(); // refresh fails: cached copy served, retry deferred
+    advanceClock(29_000);
+    await repository.list();
+    expect(httpGet).toHaveBeenCalledTimes(2);
+
+    advanceClock(1_000);
+    expect((await repository.list()).map((p) => p.id)).toEqual(['1', '5']);
+    expect(httpGet).toHaveBeenCalledTimes(3);
+  });
+
+  it('serves the fallback catalogue, with a warning, if Fake Store has never been reachable', async () => {
+    const { repository, logger } = setup([new Error('HTTP 403')], {
+      fallbackCatalogue: [aProduct('99')],
+    });
+
+    expect((await repository.list()).map((p) => p.id)).toEqual(['99']);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ servedFrom: 'fallback' }),
+      expect.any(String),
+    );
+  });
+
+  it('prefers live data over the fallback catalogue', async () => {
+    const { repository } = setup([[backpack]], { fallbackCatalogue: [aProduct('99')] });
+    expect((await repository.list()).map((p) => p.id)).toEqual(['1']);
   });
 });

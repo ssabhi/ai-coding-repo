@@ -13,5 +13,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
     include: ['test/**/*.test.{ts,tsx}'],
+    // Without this, jest-dom can load a second copy of vitest on Windows when
+    // the drive letter's case differs (c:\ vs C:\), and its matchers land on
+    // the wrong `expect`.
+    server: { deps: { inline: ['@testing-library/jest-dom'] } },
   },
 });

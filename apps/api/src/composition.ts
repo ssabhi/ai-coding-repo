@@ -22,9 +22,14 @@ export function createProductRepository(
   switch (config.source) {
     case 'fakestore':
       return new FakeStoreProductRepository({
-        ...config.fakeStore,
+        baseUrl: config.fakeStore.baseUrl,
+        timeoutMs: config.fakeStore.timeoutMs,
         cacheTtlMs: config.cacheTtlMs,
         currency: config.currency,
+        fallbackCatalogue:
+          config.fakeStore.fallback === 'snapshot'
+            ? loadSnapshotProducts(config.currency)
+            : undefined,
         logger,
       });
     case 'fixture':

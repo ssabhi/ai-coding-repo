@@ -56,10 +56,16 @@ export class CatalogueService {
 
   /** Lists every product, or only those matching `search` when one is given. */
   listProducts(search?: string): Promise<Product[]> {
-    return this.products.list(search ? { search } : {});
+    return this.products.list(search === undefined ? {} : { search });
   }
 
   findProduct(id: string): Promise<Product | undefined> {
     return this.products.findById(id);
+  }
+
+  /** Picks that don't exist in the catalogue, e.g. a typo or a discontinued product. */
+  async missingTopRatedIds(): Promise<string[]> {
+    const ids = new Set((await this.products.list()).map((product) => product.id));
+    return this.merchandising.topRatedIds.filter((id) => !ids.has(id));
   }
 }
